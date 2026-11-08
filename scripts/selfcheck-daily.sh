@@ -1,6 +1,6 @@
 #!/bin/bash
 # 每日自检包装脚本，配合 ai-access-check.sh 使用
-# 挂进 crontab：20 3 * * * /bin/bash /home/ubuntu/selfcheck-daily.sh
+# 挂进 crontab：20 3 * * * /bin/bash /home/你的用户名/selfcheck-daily.sh（crontab 不展开 $HOME）
 
 # ===== 按自己的情况改这四行 =====
 DOMAIN=your-domain.xyz
@@ -8,14 +8,14 @@ PUBLIC_IP=""
 MCP_PATH=/mcp
 
 # token 从 env 文件里读，不要把明文写在这个脚本里
-ENV_FILE=/home/ubuntu/ombre.env
-ENV_KEY=OMBRE_MCP_TOKEN
+ENV_FILE=${ENV_FILE:-$HOME/mcp.env}
+ENV_KEY=MCP_TOKEN   # 改成你自己 env 文件里的变量名
 
-# 脚本来源：token 在 env 里时用 sudo 读，改成你自己的路径
+# 脚本来源：token 在 env 里时用 sudo 读，路径和变量名都改成你自己的
 SUDO="sudo -n"
 # ================================
 
-LOG=/home/ubuntu/selfcheck.log
+LOG=${LOG:-$HOME/selfcheck.log}
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 TOKEN=$($SUDO grep "^${ENV_KEY}=" "$ENV_FILE" 2>/dev/null | cut -d= -f2-)

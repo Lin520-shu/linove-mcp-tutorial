@@ -17,9 +17,31 @@
 - 服务器不对公网开放任何入站端口，真实 IP 被人知道也连不进来
 - 一套学会就能反复用的部署流程
 
+部署完成后的链路示意如下，图里不含任何真实域名与 IP。
+
+![架构示意](docs/architecture.png)
+
 ## 建议搭配
 
 记忆系统、自主唤醒、支持远程 MCP 的前端。
+
+## 拿到这份教程
+
+```bash
+git clone https://github.com/Lin520-shu/linove-mcp-tutorial.git
+cd linove-mcp-tutorial
+```
+
+仓库里就这几样东西：
+
+```
+README.md                     本文
+scripts/ai-access-check.sh    十项自检，一条命令跑完
+scripts/selfcheck-daily.sh    每日自检的 cron 包装
+docs/architecture.png         部署完成后的链路示意
+```
+
+教程里出现的域名、IP、token、隧道名全部是占位符，替换成你自己的再执行。
 
 ## 本篇介绍
 
@@ -125,7 +147,7 @@ cloudflared tunnel login
 2）建隧道
 
 ```bash
-cloudflared tunnel create lin-home
+cloudflared tunnel create your-tunnel
 ```
 
 记下它给你的隧道 ID，后面配置文件要用。
@@ -184,7 +206,7 @@ list 里 CONNECTIONS 那一列出现几个连接，才算真连上了。
 5）建 DNS
 
 ```bash
-cloudflared tunnel route dns lin-home 你的域名
+cloudflared tunnel route dns your-tunnel 你的域名
 ```
 
 这一条会替你建一条 CNAME 指向隧道。报 code 1003 就是第四步那条 A 记录还没删。
@@ -224,6 +246,22 @@ curl -s -o /dev/null -w "%{http_code}\n" https://你的域名/mcp
 
 带上 token 做一次 initialize 握手，回来 200 并且自报服务名，才算真通。要是回 502 或者 504，那是反代后面根本没人，回到第一步看容器活没活。
 
+两条命令都是可以直接抄的：
+
+```bash
+# 不带 token：应当回 401
+curl -s -o /dev/null -w "%{http_code}\n" https://你的域名/mcp
+
+# 带 token 握手：应当回 200，并自报服务名
+curl -s -H "Authorization: Bearer 你的token" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"curl","version":"1.0"}}}' \
+  https://你的域名/mcp
+```
+
+Accept 那一行不能省。MCP 的流式传输要求客户端先声明自己能接受 SSE，只加 Authorization 不带 Accept，会直接回 406。这个坑很难查，因为 406 看起来太像鉴权失败，人会先去怀疑 token 写错了。
+
 想看流量是不是真的从 Cloudflare 来的，加 -I 看响应头，有 cf-ray 就对了。
 
 ## 部署完成后，用一条命令自检
@@ -255,13 +293,18 @@ DOMAIN=your-domain.xyz TOKEN=你的token bash scripts/ai-access-check.sh
 想让它每天自己跑一次，把 `scripts/selfcheck-daily.sh` 挂进 crontab：
 
 ```bash
+# 先把脚本放到自己家目录，下面的用户名换成你自己的
+cp scripts/selfcheck-daily.sh ~/selfcheck-daily.sh
+chmod +x ~/selfcheck-daily.sh
+# 打开改两处：DOMAIN 改成你的域名，ENV_FILE 指向你自己的 env 文件
+nano ~/selfcheck-daily.sh
 # 每天 03:20 跑一次，紧跟在 03:17 的备份之后
-20 3 * * * /bin/bash /home/ubuntu/selfcheck-daily.sh
+20 3 * * * /bin/bash /home/你的用户名/selfcheck-daily.sh
 ```
 
-日志会一直往 `selfcheck.log` 里堆。攒上一个月，就是一条可查的连续在线曲线，比单张截图更有说服力。
+crontab 里不会展开 `$HOME`，那一行必须写完整路径。日志会一直往 `selfcheck.log` 里堆。攒上一个月，就是一条可查的连续在线曲线，比单张截图更有说服力。
 
-> 本仓库的实测记录：2026-11-04，腾讯云轻量东京 2 核 2G、Ubuntu 22.04，首次全量十项通过，零失败零跳过，当时机器已连续运行 11 天。
+> 本仓库的实测记录：2026-11-04，一台海外廉价轻量云主机，2 核 2G、Ubuntu 22.04，首次全量十项通过，零失败零跳过，当时机器已连续运行 11 天。
 
 ## 按现象排查
 

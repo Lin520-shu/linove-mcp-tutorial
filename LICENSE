@@ -18,3 +18,6 @@ https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
 Copyright (c) 2026 Linove
 
 本教程所涉技术步骤均为通用公开方法，按自身情况调整使用，操作风险自负。
+
+---
+关于脚本代码：本仓库 scripts 目录下的 shell 脚本采用 MIT 许可，可自由使用、修改与再分发，保留版权声明即可。文档部分仍适用上述 CC BY-NC-SA 4.0。
