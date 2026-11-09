@@ -1,0 +1,247 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>linove-mcp-tutorial</title><style>
+body{margin:0;padding:18px 16px 60px;background:#fff;color:#1f2328;
+font-family:-apple-system,"Noto Sans CJK SC","PingFang SC",sans-serif;
+font-size:16px;line-height:1.85;word-break:break-word;}
+h1{font-size:23px;line-height:1.4;margin:6px 0 12px;color:#132a44;}
+h2{font-size:19px;margin:30px 0 10px;padding-left:9px;border-left:4px solid #2f6fb3;color:#132a44;}
+h3{font-size:17px;margin:22px 0 8px;color:#132a44;}
+p{margin:10px 0;}
+ul{margin:8px 0;padding-left:22px;}
+li{margin:5px 0;}
+li.ol{margin-left:18px;list-style:decimal;}
+pre{background:#f5f7fa;border:1px solid #e3e8ee;border-radius:8px;
+padding:12px;overflow-x:auto;margin:12px 0;}
+pre code{font-family:Menlo,Consolas,monospace;font-size:13px;line-height:1.6;
+color:#243b53;background:none;padding:0;white-space:pre;}
+code{background:#eef2f6;border-radius:4px;padding:1px 5px;font-size:14px;
+font-family:Menlo,Consolas,monospace;color:#0b5cad;}
+img{max-width:100%;height:auto;display:block;margin:14px 0;border:1px solid #e3e8ee;border-radius:8px;}
+blockquote{margin:12px 0;padding:10px 14px;background:#f2f7fd;border-left:3px solid #7aa7d6;
+color:#33475b;font-size:15px;}
+a{color:#0b5cad;text-decoration:none;border-bottom:1px solid #cddbea;}
+hr{border:none;border-top:1px solid #e3e8ee;margin:24px 0;}
+</style></head>
+<body>
+<h1>电脑关机，你的 AI 也能接着跑</h1>
+<p>用一台 VPS 加一个域名，给 MCP 服务一个固定的公网入口。</p>
+<p>成本低，部署简单，网络安全性高，一份能照着做的系统化教程，外加我踩过的所有坑。</p>
+<h2>你需要什么</h2>
+<ul>
+<li>一台轻量应用服务器 VPS，1 核 2G 够用</li>
+<li>一个域名，.xyz 首年十几块</li>
+<li>一个 Cloudflare 免费账号</li>
+</ul>
+<h2>你能得到什么</h2>
+<ul>
+<li>一个 24 小时在线的 MCP 服务地址，手机断电、电脑关机都不影响</li>
+<li>一条挂在 Cloudflare 后面的稳定入口</li>
+<li>服务器不对公网开放任何入站端口，真实 IP 被人知道也连不进来</li>
+<li>一套学会就能反复用的部署流程</li>
+</ul>
+<p>部署完成后的链路示意如下，图里不含任何真实域名与 IP。</p>
+<p><img alt="架构示意" src="docs/architecture.png"></p>
+<h2>建议搭配</h2>
+<p>记忆系统、自主唤醒、支持远程 MCP 的前端。</p>
+<h2>拿到这份教程</h2>
+<pre><code>git clone https://github.com/Lin520-shu/linove-mcp-tutorial.git
+cd linove-mcp-tutorial</code></pre>
+<p>仓库里就这几样东西：</p>
+<pre><code>README.md                     本文
+scripts/ai-access-check.sh    十项自检，一条命令跑完
+scripts/selfcheck-daily.sh    每日自检的 cron 包装
+docs/architecture.png         部署完成后的链路示意</code></pre>
+<p>教程里出现的域名、IP、token、隧道名全部是占位符，替换成你自己的再执行。</p>
+<h2>本篇介绍</h2>
+<p>把服务放到一台云服务器上，再挂个域名，它就有了固定地址，任何支持远程 MCP 的客户端都能连进来，前端想换哪个换哪个。</p>
+<h2>总成本</h2>
+<p>百元级。一年 VPS 加一年域名，再加本次跑模型的 Token 费，合计在百元上下，具体看你选的机型和域名后缀。</p>
+<h2>开始之前：哪几步你自己做</h2>
+<p>前面几步必须你自己操作，因为 MCP 还没连上，我没有手，连不上就没有工具可用。等第五步隧道跑通、客户端能握手了，剩下的配置、排查、改文件都可以交给 AI。</p>
+<p>读者最怕的其实不是步骤难，而是不知道自己该做哪一步、哪一步能甩出去。所以先说清楚：零到四步自己动手，第五步开始可以喊 AI 一起。</p>
+<hr>
+<h2>第零步，买东西和第一次登录</h2>
+<p>这一段是给完全没碰过服务器的人写的。后面从第一步开始讲部署，可很多人卡在这之前：机器买回来了，不知道怎么登进去。</p>
+<p>买什么。轻量应用服务器和云服务器都行，2 核 2G 是舒服的档，1 核 2G 也能跑，内存紧一点。镜像选 Ubuntu 22.04 LTS，别选带面板的镜像，宝塔那类会占端口，还会在你不知道的时候自己开一堆服务。地域选离你近的，香港、东京对国内访问友好。付完在控制台把公网 IP 记下来。</p>
+<p>第一次进去。买完先在控制台点一次重置密码，自己设一个，然后连上去：</p>
+<pre><code>ssh root@你的公网IP</code></pre>
+<p>Windows 用 PowerShell 或 cmd 直接打这一行，Win10 以后自带 ssh，不用另外装。Mac 和 Linux 打开终端。手机上装 Termius 或 JuiceSSH 也行。第一次连会问 yes/no，打 yes 回车。密码输进去屏幕上什么都不显示，这是正常的，输完直接回车。</p>
+<p>云厂商的安全组，这是第一个真正会卡住人的地方。机器里的防火墙放行了，控制台的安全组没放行，照样连不上，两层墙两层都得开。安全组里只留一条入站规则，TCP 22（或者你改过的 ssh 端口），来源填你的 IP。80、443、18001 一律不加，加了就是自己把门打开。</p>
+<p>装 Docker。Ubuntu 自带的源里就有：</p>
+<pre><code>apt update &amp;&amp; apt install -y docker.io
+docker run --rm hello-world</code></pre>
+<p>看见 Hello from Docker 那句，就算装好了。国内机器 pull 镜像慢，可以在 /etc/docker/daemon.json 里加一个镜像加速地址再重启 docker。</p>
+<p>买域名。阿里云、腾讯云、Namesilo 都行，.xyz 首年十几块。买完去 Cloudflare 注册一个账号，添加站点，再把域名商后台的 NS 两条改成 Cloudflare 给的那两条，等生效，查一下：</p>
+<pre><code>nslookup -type=ns 你的域名</code></pre>
+<p>NS 显示成 Cloudflare 的那两条，第四步就能往下走。这一步慢是正常的，几十分钟到几小时都有，别反复改。</p>
+<hr>
+<h2>第一步，把服务跑起来</h2>
+<p>拉取你需要的业务镜像，比如各类 MCP 服务或记忆系统，配置用 env 文件喂。</p>
+<p>这里有一条死线：换 key 可以，换模型不行。向量模型一换维度就变，bge-m3 是 1024 维，库里所有向量当场作废，搜索出来全是垃圾。认准这个别动。</p>
+<p>改完 env 必须重建容器，简单重启读不到新值，因为它只在创建时读一次。</p>
+<h2>第二步，安全隔离</h2>
+<p>容器只绑本机 127.0.0.1:18001，不要往公网暴露。</p>
+<p>防火墙只开你 ssh 实际用的那个端口，一定要按自己机器的实际端口来填，填错就把自己关在门外。80 端口尽量别碰，不少机器的 sshd 就占着 80，你去抢会直接断线。</p>
+<p>做完后面第五步，443 就不用开了，因为我们根本不会让它监听在公网上。</p>
+<h2>第三步，Nginx 只绑本机</h2>
+<p>Nginx 在 443 上做反向代理转给 18001，证书用自签的，openssl 一条命令生成，十年有效期。</p>
+<p>自签证书单独用会报警告，但前面有 Cloudflare 兜着就没事，前提是 CF 的 SSL 模式设成完全，不是完全严格。设成严格，CF 会去校验这张自签证书，直接给你 526。</p>
+<pre><code>server {
+    listen 127.0.0.1:443 ssl;
+    server_name 你的域名;
+
+    ssl_certificate     /etc/nginx/ssl/lin.crt;
+    ssl_certificate_key /etc/nginx/ssl/lin.key;
+
+    client_max_body_size 50m;
+
+    location / {
+        proxy_pass http://127.0.0.1:18001;
+        proxy_http_version 1.1;
+        proxy_set_header Host 你的域名;
+        proxy_set_header Connection "";
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+    }
+}</code></pre>
+<p>四行要解释。</p>
+<p>listen 后面写 127.0.0.1，不写 0.0.0.0。这一行决定的是整台机器对外开不开门，写成 0.0.0.0 就是全网都能敲，写成 127.0.0.1 就只有本机的进程能连。</p>
+<p>Connection 头必须清空。MCP 走的是长连接，不清这个头，Nginx 默认会给它塞一个 keep-alive，长连接会莫名其妙断在半路，而你看日志看不出任何毛病。</p>
+<p>read_timeout 写 86400，一天。写 3600 的话，正好在你最需要它的时候断。</p>
+<p>改完 listen 的地址要 restart，不是 reload。reload 不会重新绑定端口，我改完 listen 127.0.0.1 跑 reload，ss 一看还在 0.0.0.0 上，白高兴一场。</p>
+<pre><code>sudo nginx -t &amp;&amp; sudo systemctl restart nginx
+ss -tlnp | grep 443</code></pre>
+<p>第二行应该只输出 127.0.0.1:443，出现 0.0.0.0:443 就是没生效。</p>
+<h2>第四步，域名接进 Cloudflare</h2>
+<p>域名 NS 切到 Cloudflare，等生效，几十分钟到几小时都有可能。</p>
+<p>这一步先不要加 A 记录。这是很多人踩的坑：先加了 A 记录指向 VPS 公网 IP，后面建隧道加 CNAME 时 Cloudflare 会直接拒绝，报 code 1003，因为同名记录只能有一条。加错了也不要紧，去面板把那条 A 记录删掉，再执行第五步的建 DNS 命令。</p>
+<h2>第五步，Cloudflare Tunnel，让服务器不开任何入站端口</h2>
+<p>到这一步之前，你的域名是直接指着一台真实 IP 的，任何人 ping 一下就知道你的机器在哪，443 和 ssh 端口对全网开着，人家绕过 Cloudflare 就能直接打。扫描器不用你邀请，它自己会来。我这边域名上线当天就有人来扫 .env 和 kubeconfig，一百多次请求，全是被这些入站端口放进来的。</p>
+<p>隧道要解决的就是这个。它让服务器主动往 Cloudflare 建立连接，外网只连 Cloudflare，Cloudflare 再把流量顺着这条已经建好的连接送进来。你的机器一个入站端口都不开。</p>
+<p>1）登录授权</p>
+<pre><code>cloudflared tunnel login</code></pre>
+<p>它会打印一个 URL，复制到浏览器打开，登录你的 Cloudflare 账号，勾选你要用的那个域名，点最下面的 Authorize。注意是勾域名再点按钮，只登录不算完成。点完之后服务器上的 cloudflared 会自动把证书下载到 ~/.cloudflared/cert.pem，你回去看那个进程还在等，就说明没走完。</p>
+<p>第一次用 Argo Tunnel 的账号，Cloudflare 会先要求验证邮箱，去邮箱点一下就好，跟隧道无关。</p>
+<p>2）建隧道</p>
+<pre><code>cloudflared tunnel create your-tunnel</code></pre>
+<p>记下它给你的隧道 ID，后面配置文件要用。</p>
+<p>3）写配置</p>
+<pre><code>nano ~/.cloudflared/config.yml</code></pre>
+<pre><code>tunnel: 你的隧道ID
+credentials-file: /home/你的用户名/.cloudflared/你的隧道ID.json
+
+ingress:
+  - hostname: 你的域名
+    service: https://127.0.0.1:443
+    originRequest:
+      noTLSVerify: true
+  - service: http_status:404</code></pre>
+<p>noTLSVerify 这一句不能省。Nginx 用的是自签证书，cloudflared 认不出来，不写这句它就拒绝转发，你会得到一堆 502 却查不出原因。</p>
+<p>最后那行 404 是兜底规则，不写它配置校验不通过。</p>
+<p>4）做成开机自启</p>
+<pre><code>[Unit]
+Description=Cloudflare Tunnel
+After=network.target
+
+[Service]
+Type=notify
+User=你的用户名
+ExecStart=/usr/local/bin/cloudflared --no-autoupdate --config /home/你的用户名/.cloudflared/config.yml tunnel run
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+<p>存到 /etc/systemd/system/cloudflared.service，然后：</p>
+<pre><code>sudo systemctl daemon-reload
+sudo systemctl enable --now cloudflared
+sudo systemctl status cloudflared
+cloudflared tunnel list</code></pre>
+<p>list 里 CONNECTIONS 那一列出现几个连接，才算真连上了。</p>
+<p>5）建 DNS</p>
+<pre><code>cloudflared tunnel route dns your-tunnel 你的域名</code></pre>
+<p>这一条会替你建一条 CNAME 指向隧道。报 code 1003 就是第四步那条 A 记录还没删。</p>
+<h2>第六步，客户端连接</h2>
+<p>客户端里加远程 MCP，地址填 https://你的域名/mcp，认证头写 Authorization 加 Bearer 加你的 token。</p>
+<p>这一步最容易翻车：很多客户端要求 headers 是 JSON 对象，你要是把它写成一整串字符串，它不报错，直接把这条服务当成不存在，你在界面里翻半天也找不到。</p>
+<pre><code>{
+  "url": "https://你的域名/mcp",
+  "headers": {
+    "Authorization": "Bearer 你的token"
+  }
+}</code></pre>
+<h2>怎么验证</h2>
+<p>先验隐身有没有做成：</p>
+<pre><code>curl -sk -o /dev/null -w "%{http_code}\n" --max-time 8 https://你的公网IP/</code></pre>
+<p>应该是连不上，返回 000。能返回 200 或者 401，说明你的 443 还在公网上裸奔。</p>
+<p>再验服务本身：</p>
+<pre><code>curl -s -o /dev/null -w "%{http_code}\n" https://你的域名/mcp</code></pre>
+<p>不带 token 应该回 401。401 是好事，说明门在、要钥匙。</p>
+<p>带上 token 做一次 initialize 握手，回来 200 并且自报服务名，才算真通。要是回 502 或者 504，那是反代后面根本没人，回到第一步看容器活没活。</p>
+<p>两条命令都是可以直接抄的：</p>
+<pre><code># 不带 token：应当回 401
+curl -s -o /dev/null -w "%{http_code}\n" https://你的域名/mcp
+
+# 带 token 握手：应当回 200，并自报服务名
+curl -s -H "Authorization: Bearer 你的token" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"curl","version":"1.0"}}}' \
+  https://你的域名/mcp</code></pre>
+<p>Accept 那一行不能省。MCP 的流式传输要求客户端先声明自己能接受 SSE，只加 Authorization 不带 Accept，会直接回 406。这个坑很难查，因为 406 看起来太像鉴权失败，人会先去怀疑 token 写错了。</p>
+<p>想看流量是不是真的从 Cloudflare 来的，加 -I 看响应头，有 cf-ray 就对了。</p>
+<h2>部署完成后，用一条命令自检</h2>
+<p>前面「怎么验证」那几条，原本要人手一条条敲。这一节把它们合成一个脚本，跑完直接出一张报告，哪项不过就在后面跟一条修复提示，不用自己对着状态码猜。</p>
+<pre><code># 用法：域名和 token 传进去，公网 IP 不给则自动探测
+DOMAIN=your-domain.xyz TOKEN=你的token bash scripts/ai-access-check.sh
+
+# 命令前多打一个空格，token 就不会落进 shell history</code></pre>
+<p>它查十项：</p>
+<li class="ol">Nginx 反代端口是否只绑 127.0.0.1</li>
+<li class="ol">MCP 服务端口是否只绑 127.0.0.1</li>
+<li class="ol">反代以外的自建服务端口是否也只绑本机</li>
+<li class="ol">直接打公网 IP 是否回 000</li>
+<li class="ol">不带 token 是否回 401</li>
+<li class="ol">带 token 握手是否回 200</li>
+<li class="ol">响应头是否含 cf-ray，确认真的走的隧道</li>
+<li class="ol">cloudflared 服务是否常驻</li>
+<li class="ol">自签证书是否就位</li>
+<li class="ol">系统连续运行时长</li>
+<p>十项全绿，才说明这套「零入站」的安全模型真的成立。这张输出比任何文字描述都硬，可以直接截图留档。</p>
+<p>想让它每天自己跑一次，把 <code>scripts/selfcheck-daily.sh</code> 挂进 crontab：</p>
+<pre><code># 先把脚本放到自己家目录，下面的用户名换成你自己的
+cp scripts/selfcheck-daily.sh ~/selfcheck-daily.sh
+chmod +x ~/selfcheck-daily.sh
+# 打开改两处：DOMAIN 改成你的域名，ENV_FILE 指向你自己的 env 文件
+nano ~/selfcheck-daily.sh
+# 每天 03:20 跑一次，紧跟在 03:17 的备份之后
+20 3 * * * /bin/bash /home/你的用户名/selfcheck-daily.sh</code></pre>
+<p>crontab 里不会展开 <code>$HOME</code>，那一行必须写完整路径。日志会一直往 <code>selfcheck.log</code> 里堆。攒上一个月，就是一条可查的连续在线曲线，比单张截图更有说服力。</p>
+<p>&gt; 本仓库的实测记录：2026-11-04，一台海外廉价轻量云主机，2 核 2G、Ubuntu 22.04，首次全量十项通过，零失败零跳过，当时机器已连续运行 11 天。</p>
+<h2>按现象排查</h2>
+<p>连不上、超时、一直转圈：先 systemctl status cloudflared 看隧道进程在不在，再 ss -tlnp | grep 443 看 Nginx 绑在哪。这两个都在，才轮到查客户端配置。</p>
+<p>返回 502 或 504：反代后面没东西。docker ps 看容器活着没，curl 127.0.0.1:18001 直接在服务器上打，能通就是 Nginx 配置的问题，不通就是容器的问题。</p>
+<p>返回 526：Cloudflare 的 SSL 模式设成了完全严格。改成完全。</p>
+<p>返回 401：正常，缺 token。</p>
+<p>route dns 报 1003：第四步那条 A 记录还在，删掉重跑。</p>
+<p>改完 listen 还是 0.0.0.0：你用了 reload，改绑定地址必须 restart。</p>
+<p>隧道进程起来了但域名不通：cloudflared tunnel list 里 CONNECTIONS 是空的，说明它连不上 Cloudflare，看机器能不能出站访问 7844 的 UDP，有些机房默认封。</p>
+<h2>我踩过的坑</h2>
+<li class="ol">headers 存成字符串，静默失效，我查了三个小时。</li>
+<li class="ol">env 和 config 两层都得改对，改完 env 必须重建容器，简单重启读不到新值。</li>
+<li class="ol">80 端口不能碰。</li>
+<li class="ol">程序装了，不等于在用。cloudflared 好好地躺在 /usr/local/bin 里，没有服务、没有配置、没有证书目录，systemctl status 报 Unit could not be found。我一度以为自己在用隧道，其实域名直指真实 IP，443 对全网开着。这一条我写进教程的时候才发现，写得像已经做到了，其实没做到，那种感觉比踩坑还难受几分。</li>
+<li class="ol">listen 改成 127.0.0.1 之后跑了 reload，ss 一看还在 0.0.0.0，必须 restart。</li>
+<li class="ol"><code>--host 0.0.0.0</code> 这类默认值藏在 systemd 的 ExecStart 里，最容易漏。容器绑对了 127.0.0.1，另一个自建服务却对着全网开门，等于白做。改完必须 <code>daemon-reload</code> 再 <code>restart</code>，<code>ss -tln</code> 里看到 <code>127.0.0.1</code> 才算数。</li>
+<li class="ol">隧道配置文件里留着已经没人监听的服务，就是留了一条死链。域名还在解析、隧道还在转，后端却 404 或超时，排查时很容易误判成隧道坏了。拿 <code>ss -tln</code> 对一遍 ingress 里每个 service，对不上的先删掉，需要时再加回来。</li>
+<li class="ol">长连接老是断，除了运营商对空闲连接的回收，还有一处可调：<code>originRequest</code> 里加 <code>tcpKeepAlive: 30s</code> 和 <code>keepAliveTimeout: 90s</code>，让中间设备不敢把这条连接当空闲清掉。它治不了客户端到边缘那一段，但能砍掉一半无谓的重连。</li>
+<h2>最后一句</h2>
+<p>token 别截图，别发群里，谁拿到谁就能读走你全部的记录。教程里所有域名、IP、token 都是占位符，替换成你自己的。</p>
+<hr>
+<p>以上复制粘贴扔给 AI 就能做，是一个比较系统的教程，希望有帮助。</p>
+<p>另附：Agent 模式下的定时唤醒机制、自主唤醒、MCP 服务创建，可以作为下一步继续搭。</p>
+<h2>整理与授权</h2>
+<p>本文由 Linove 整理，发布于小红书与 GitHub。</p>
+<p>未经许可请勿商用转载，转载请注明出处与本仓库链接。</p></body></html>
